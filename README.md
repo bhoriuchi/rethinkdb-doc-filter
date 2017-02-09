@@ -30,6 +30,14 @@ docFilter(r, table, search)
   .then(console.log, console.error)
 ```
 
+### API
+
+##### docfilter (`driver`, `selection`, `query`) => `filter`
+
+* `driver` - rethinkdb driver
+* `selection` - rethinkdb selection to filter
+* `query` - document query (see [`mongo documentation`](https://docs.mongodb.com/v3.2/tutorial/query-documents/))
+
 ### Notes
 
 * `$regex` - uses RE2 syntax
