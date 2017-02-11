@@ -1,9 +1,9 @@
 # rethinkdb-doc-filter
-MongoDB document queries in RethinkDB
+MongoDB query documents in RethinkDB
 
 ---
 
-Creates a rethinkdb filter using MongoDB document queries
+Creates a rethinkdb filter using MongoDB [query document](https://docs.mongodb.com/v3.2/tutorial/query-documents/)
 
 ### Operators
 

@@ -1,9 +1,9 @@
 import rethinkdbdash from 'rethinkdbdash'
 import docFilter from '../src/index'
 
-let r = rethinkdbdash()
+let r = rethinkdbdash({ silent: true })
 
-let table = r.db('test').table('Animals')
+let table = r.db('test').table('doc')
 
 let search = {
   $and: [
@@ -32,4 +32,16 @@ let search4 = {
   }
 }
 
-docFilter(r, table, search3).run().then(console.log, console.error)
+let search5 = {
+  likes: {
+    activity: { $not: { $exists: true, $eq: 'walks' } }
+  }
+}
+
+docFilter(r, table, search5).run().then(result => {
+  console.log(result)
+  process.exit()
+}, error => {
+  console.dir(error)
+  process.exit()
+})

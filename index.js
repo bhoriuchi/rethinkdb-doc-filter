@@ -4,20 +4,31 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 
 var _ = _interopDefault(require('lodash'));
 
-var defineProperty = function (obj, key, value) {
-  if (key in obj) {
-    Object.defineProperty(obj, key, {
-      value: value,
-      enumerable: true,
-      configurable: true,
-      writable: true
-    });
-  } else {
-    obj[key] = value;
-  }
-
-  return obj;
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
+  return typeof obj;
+} : function (obj) {
+  return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -77,88 +88,134 @@ var slicedToArray = function () {
   };
 }();
 
-function reqlPath(record, path) {
-  return _.reduce(_.toPath(path), function (accum, cur) {
-    return accum(cur);
-  }, record);
-}
+var OPERATORS = ['all', 'and', 'eq', 'exists', 'gt', 'gte', 'in', 'lt', 'lte', 'mod', 'ne', 'nin', 'nor', 'not', 'or', 'regex', 'size'];
 
-function buildFilter(r, record, selection, search) {
-  // reduce the entire search
-  return _.reduce(search, function (accum, cur, key) {
-    var rec = reqlPath(record, key);
+function docFilter(r, selection, query) {
+  var operatorPrefix = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : '$';
 
-    // first check for and/or operators and reduce their value
-    switch (key) {
-      case '$and':
-        return _.reduce(cur, function (accum, cur) {
-          return accum.and(buildFilter(r, record, selection, cur));
-        }, r.expr(true));
+  var operation = _.mapValues(_.keyBy(OPERATORS), function (op) {
+    return '' + operatorPrefix + op;
+  });
+  var isOp = function isOp(key) {
+    return _.includes(_.values(operation), key);
+  };
+  var firstKey = function firstKey(obj) {
+    return _.first(_.keys(obj));
+  };
+  var hasOp = function hasOp(sub) {
+    return isOp(firstKey(sub));
+  };
+  var getProp = function getProp(key) {
+    return isOp(key) ? null : _.isString(key) ? key : null;
+  };
+  var getOp = function getOp(key) {
+    return isOp(key) ? key : null;
+  };
 
-      case '$or':
-        return _.reduce(cur, function (accum, cur) {
-          return accum.or(buildFilter(r, record, selection, cur));
-        }, r.expr(false));
+  var _filter = function _filter(record, op, prop, subQuery) {
+    var _ret = function () {
+      switch (op) {
+        case operation.and:
+          return {
+            v: _.reduce(subQuery, function (accum, cur) {
+              return accum.and(_filter(record, null, null, cur));
+            }, r.expr(true))
+          };
 
-      case '$nor':
-        return accum.and(_.reduce(cur, function (accum, cur) {
-          return accum.and(buildFilter(r, record, selection, cur).eq(false));
-        }, r.expr(true)));
+        case operation.nor:
+          return {
+            v: _.reduce(subQuery, function (accum, cur) {
+              return accum.and(_filter(record, null, null, cur).eq(false));
+            }, r.expr(true))
+          };
 
-      // all other operators can be immediately evaluated
-      default:
-        var op = _.first(_.keys(cur));
-        var val = cur[op];
+        case operation.or:
+          return {
+            v: _.reduce(subQuery, function (accum, cur) {
+              return accum.or(_filter(record, null, null, cur));
+            }, r.expr(false))
+          };
 
-        switch (op) {
-          case '$eq':
-            return rec.eq(val);
-          case '$ne':
-            return rec.ne(val);
-          case '$regex':
-            return rec.match(val);
-          case '$gt':
-            return rec.gt(val);
-          case '$gte':
-            return rec.ge(val);
-          case '$lt':
-            return rec.lt(val);
-          case '$lte':
-            return rec.le(val);
-          case '$in':
-            return r.expr(val).contains(rec);
-          case '$nin':
-            return r.expr(val).contains(rec).not();
-          case '$not':
-            return buildFilter(r, record, selection, defineProperty({}, key, val)).not();
-          case '$exists':
-            return record.hasFields(_.set({}, key, true));
-          case '$mod':
-            var _val = slicedToArray(val, 2),
-                divisor = _val[0],
-                remainder = _val[1];
+        default:
+          if (!_.isObject(subQuery) || _.isDate(subQuery)) return {
+              v: record.eq(subQuery)
+            };
+          var subRecord = prop ? record(prop) : record;
 
-            remainder = _.isNumber(remainder) ? Math.floor(remainder) : 0;
-            return _.isNumber(divisor) ? rec.mod(Math.floor(divisor)).eq(remainder) : r.error('bad query: BadValue malformed mod, not enough elements');
-          case '$all':
-            return r.expr(val).reduce(function (left, right) {
-              return left.and(rec.contains(right));
-            }, r.expr(true));
-          case '$size':
-            return rec.coerceTo('array').count().eq(val);
+          return {
+            v: _.reduce(subQuery, function (accum, cur, key) {
+              var subOp = getOp(key);
+              var subProp = getProp(key);
 
-          // default to record(key) === currentValue
-          default:
-            return rec.eq(cur);
-        }
-    }
-  }, r.expr(true));
-}
+              switch (subOp) {
+                case operation.all:
+                  return accum.and(r.expr(cur).reduce(function (left, right) {
+                    return left.and(subRecord.contains(right));
+                  }, r.expr(true)));
 
-function Filter(r, selection, search) {
+                case operation.eq:
+                  return accum.and(subRecord.eq(cur));
+
+                case operation.exists:
+                  if (!_.isBoolean(cur)) return r.error('exists not boolean');
+                  return accum.and(cur ? record.default({}).hasFields(prop) : record.default({}).hasFields(prop).not());
+
+                case operation.gt:
+                  return accum.and(subRecord.gt(cur));
+
+                case operation.gte:
+                  return accum.and(subRecord.ge(cur));
+
+                case operation.in:
+                  return accum.and(r.expr(cur).contains(subRecord));
+
+                case operation.lt:
+                  return accum.and(subRecord.lt(cur));
+
+                case operation.lte:
+                  return accum.and(subRecord.le(cur));
+
+                case operation.mod:
+                  var _cur = slicedToArray(cur, 2),
+                      divisor = _cur[0],
+                      remainder = _cur[1];
+
+                  remainder = _.isNumber(remainder) ? Math.floor(remainder) : 0;
+                  return _.isNumber(divisor) ? accum.and(record.mod(Math.floor(divisor)).eq(remainder)) : r.error('bad query: BadValue malformed mod, not enough elements');
+
+                case operation.ne:
+                  return accum.and(subRecord.ne(cur));
+
+                case operation.nin:
+                  return accum.and(r.expr(cur).contains(subRecord).not());
+
+                case operation.not:
+                  return accum.and(_filter(record, op, prop, cur).not());
+
+                case operation.regex:
+                  return accum.and(subRecord.match(cur));
+
+                case operation.size:
+                  return _.isNumber(cur) ? accum.and(subRecord.count().eq(Math.floor(cur))) : r.error('size must be number');
+
+                default:
+                  if (hasOp(cur)) return accum.and(_filter(subRecord, subOp, subProp, cur));
+                  if (subProp) return accum.and(_filter(subRecord(subProp), subOp, subProp, cur));
+                  return subRecord.eq(cur);
+              }
+            }, r.expr(true))
+          };
+      }
+    }();
+
+    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+  };
+
   return selection.filter(function (record) {
-    return buildFilter(r, record, selection, search);
+    return _.reduce(query, function (accum, subQuery, key) {
+      return accum.and(_filter(record, getOp(key), getProp(key), subQuery));
+    }, r.expr(true));
   });
 }
 
-module.exports = Filter;
+module.exports = docFilter;

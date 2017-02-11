@@ -1,87 +1,128 @@
 import _ from 'lodash'
 
-function reqlPath (record, path) {
-  return _.reduce(_.toPath(path), (accum, cur) => {
-    return accum(cur)
-  }, record)
-}
+const OPERATORS = [
+  'all',
+  'and',
+  'eq',
+  'exists',
+  'gt',
+  'gte',
+  'in',
+  'lt',
+  'lte',
+  'mod',
+  'ne',
+  'nin',
+  'nor',
+  'not',
+  'or',
+  'regex',
+  'size',
+]
 
-function buildFilter (r, record, selection, search) {
-  // reduce the entire search
-  return _.reduce(search, (accum, cur, key) => {
-    let rec = reqlPath(record, key)
+export default function docFilter (r, selection, query, operatorPrefix = '$') {
+  const operation = _.mapValues(_.keyBy(OPERATORS), op => `${operatorPrefix}${op}`)
+  const isOp = key => _.includes(_.values(operation), key)
+  const firstKey = obj => _.first(_.keys(obj))
+  const hasOp = sub => isOp(firstKey(sub))
+  const getProp = key => isOp(key) ? null : _.isString(key) ? key : null
+  const getOp = key => isOp(key) ? key : null
 
-    // first check for and/or operators and reduce their value
-    switch (key) {
-      case '$and':
-        return _.reduce(cur, (accum, cur) => {
-          return accum.and(buildFilter(r, record, selection, cur))
+  const _filter = (record, op, prop, subQuery) => {
+    switch (op) {
+      case operation.and:
+        return _.reduce(subQuery, (accum, cur) => {
+          return accum.and(_filter(record, null, null, cur))
         }, r.expr(true))
 
-      case '$or':
-        return _.reduce(cur, (accum, cur) => {
-          return accum.or(buildFilter(r, record, selection, cur))
+      case operation.nor:
+        return _.reduce(subQuery, (accum, cur) => {
+          return accum.and(_filter(record, null, null, cur).eq(false))
+        }, r.expr(true))
+
+      case operation.or:
+        return _.reduce(subQuery, (accum, cur) => {
+          return accum.or(_filter(record, null, null, cur))
         }, r.expr(false))
 
-      case '$nor':
-        return accum.and(_.reduce(cur, (accum, cur) => {
-          return accum.and(buildFilter(r, record, selection, cur).eq(false))
-        }, r.expr(true)))
-
-      // all other operators can be immediately evaluated
       default:
-        let op = _.first(_.keys(cur))
-        let val = cur[op]
+        if (!_.isObject(subQuery) || _.isDate(subQuery)) return record.eq(subQuery)
+        let subRecord = prop ? record(prop) : record
 
-        switch (op) {
-          case '$eq':
-            return rec.eq(val)
-          case '$ne':
-            return rec.ne(val)
-          case '$regex':
-            return rec.match(val)
-          case '$gt':
-            return rec.gt(val)
-          case '$gte':
-            return rec.ge(val)
-          case '$lt':
-            return rec.lt(val)
-          case '$lte':
-            return rec.le(val)
-          case '$in':
-            return r.expr(val).contains(rec)
-          case '$nin':
-            return r.expr(val).contains(rec).not()
-          case '$not':
-            return buildFilter(r, record, selection, { [key]: val }).not()
-          case '$exists':
-            return record.hasFields(_.set({}, key, true))
-          case '$mod':
-            let [ divisor, remainder ] = val
-            remainder = _.isNumber(remainder)
-              ? Math.floor(remainder)
-              : 0
-            return _.isNumber(divisor)
-              ? rec.mod(Math.floor(divisor)).eq(remainder)
-              : r.error('bad query: BadValue malformed mod, not enough elements')
-          case '$all':
-            return r.expr(val).reduce((left, right) => {
-              return left.and(rec.contains(right))
-            }, r.expr(true))
-          case '$size':
-            return rec.coerceTo('array').count().eq(val)
+        return _.reduce(subQuery, (accum, cur, key) => {
+          let subOp = getOp(key)
+          let subProp = getProp(key)
 
+          switch (subOp) {
+            case operation.all:
+              return accum.and(
+                r.expr(cur).reduce((left, right) => {
+                  return left.and(subRecord.contains(right))
+                }, r.expr(true))
+              )
 
-          // default to record(key) === currentValue
-          default:
-            return rec.eq(cur)
-        }
+            case operation.eq:
+              return accum.and(subRecord.eq(cur))
+
+            case operation.exists:
+              if (!_.isBoolean(cur)) return r.error('exists not boolean')
+              return accum.and(
+                cur ? record.default({}).hasFields(prop) : record.default({}).hasFields(prop).not()
+              )
+
+            case operation.gt:
+              return accum.and(subRecord.gt(cur))
+
+            case operation.gte:
+              return accum.and(subRecord.ge(cur))
+
+            case operation.in:
+              return accum.and(r.expr(cur).contains(subRecord))
+
+            case operation.lt:
+              return accum.and(subRecord.lt(cur))
+
+            case operation.lte:
+              return accum.and(subRecord.le(cur))
+
+            case operation.mod:
+              let [ divisor, remainder ] = cur
+              remainder = _.isNumber(remainder)
+                ? Math.floor(remainder)
+                : 0
+              return _.isNumber(divisor)
+                ? accum.and(record.mod(Math.floor(divisor)).eq(remainder))
+                : r.error('bad query: BadValue malformed mod, not enough elements')
+
+            case operation.ne:
+              return accum.and(subRecord.ne(cur))
+
+            case operation.nin:
+              return accum.and(r.expr(cur).contains(subRecord).not())
+
+            case operation.not:
+              return accum.and(_filter(record, op, prop, cur).not())
+
+            case operation.regex:
+              return accum.and(subRecord.match(cur))
+
+            case operation.size:
+              return _.isNumber(cur)
+                ? accum.and(subRecord.count().eq(Math.floor(cur)))
+                : r.error('size must be number')
+
+            default:
+              if (hasOp(cur)) return accum.and(_filter(subRecord, subOp, subProp, cur))
+              if (subProp) return accum.and(_filter(subRecord(subProp), subOp, subProp, cur))
+              return subRecord.eq(cur)
+          }
+        }, r.expr(true))
     }
-  }, r.expr(true))
-}
+  }
 
-export default function Filter (r, selection, search) {
   return selection.filter((record) => {
-    return buildFilter(r, record, selection, search)
+    return _.reduce(query, (accum, subQuery, key) => {
+      return accum.and(_filter(record, getOp(key), getProp(key), subQuery))
+    }, r.expr(true))
   })
 }
