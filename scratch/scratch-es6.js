@@ -38,7 +38,12 @@ let search5 = {
   }
 }
 
-docFilter(r, table, search5).run().then(result => {
+let search6 = {
+  name: 'Cat' ,
+  owner: 'you'
+}
+
+docFilter(r, table, search6).run().then(result => {
   console.log(result)
   process.exit()
 }, error => {

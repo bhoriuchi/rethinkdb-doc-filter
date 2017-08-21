@@ -46,8 +46,14 @@ export default function docFilter (r, selection, query, operatorPrefix = '$') {
         }, r.expr(false))
 
       default:
-        if (!_.isObject(subQuery) || _.isDate(subQuery)) return record.eq(subQuery)
-        let subRecord = prop ? record(prop) : record
+        if (!_.isObject(subQuery) || _.isDate(subQuery)) {
+          return prop
+            ? record(prop).default(null).eq(subQuery)
+            : record.eq(subQuery)
+        }
+        let subRecord = prop
+          ? record(prop).default(null)
+          : record
 
         return _.reduce(subQuery, (accum, cur, key) => {
           let subOp = getOp(key)
@@ -67,7 +73,9 @@ export default function docFilter (r, selection, query, operatorPrefix = '$') {
             case operation.exists:
               if (!_.isBoolean(cur)) return r.error('exists not boolean')
               return accum.and(
-                cur ? record.default({}).hasFields(prop) : record.default({}).hasFields(prop).not()
+                cur
+                  ? record.default({}).hasFields(prop)
+                  : record.default({}).hasFields(prop).not()
               )
 
             case operation.gt:

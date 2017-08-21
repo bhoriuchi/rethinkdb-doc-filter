@@ -4,52 +4,6 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 
 var _ = _interopDefault(require('lodash'));
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
-  return typeof obj;
-} : function (obj) {
-  return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj;
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 var slicedToArray = function () {
   function sliceIterator(arr, i) {
     var _arr = [];
@@ -113,102 +67,90 @@ function docFilter(r, selection, query) {
   };
 
   var _filter = function _filter(record, op, prop, subQuery) {
-    var _ret = function () {
-      switch (op) {
-        case operation.and:
-          return {
-            v: _.reduce(subQuery, function (accum, cur) {
-              return accum.and(_filter(record, null, null, cur));
-            }, r.expr(true))
-          };
+    switch (op) {
+      case operation.and:
+        return _.reduce(subQuery, function (accum, cur) {
+          return accum.and(_filter(record, null, null, cur));
+        }, r.expr(true));
 
-        case operation.nor:
-          return {
-            v: _.reduce(subQuery, function (accum, cur) {
-              return accum.and(_filter(record, null, null, cur).eq(false));
-            }, r.expr(true))
-          };
+      case operation.nor:
+        return _.reduce(subQuery, function (accum, cur) {
+          return accum.and(_filter(record, null, null, cur).eq(false));
+        }, r.expr(true));
 
-        case operation.or:
-          return {
-            v: _.reduce(subQuery, function (accum, cur) {
-              return accum.or(_filter(record, null, null, cur));
-            }, r.expr(false))
-          };
+      case operation.or:
+        return _.reduce(subQuery, function (accum, cur) {
+          return accum.or(_filter(record, null, null, cur));
+        }, r.expr(false));
 
-        default:
-          if (!_.isObject(subQuery) || _.isDate(subQuery)) return {
-              v: record.eq(subQuery)
-            };
-          var subRecord = prop ? record(prop) : record;
+      default:
+        if (!_.isObject(subQuery) || _.isDate(subQuery)) {
+          return prop ? record(prop).default(null).eq(subQuery) : record.eq(subQuery);
+        }
+        var subRecord = prop ? record(prop).default(null) : record;
 
-          return {
-            v: _.reduce(subQuery, function (accum, cur, key) {
-              var subOp = getOp(key);
-              var subProp = getProp(key);
+        return _.reduce(subQuery, function (accum, cur, key) {
+          var subOp = getOp(key);
+          var subProp = getProp(key);
 
-              switch (subOp) {
-                case operation.all:
-                  return accum.and(r.expr(cur).reduce(function (left, right) {
-                    return left.and(subRecord.contains(right));
-                  }, r.expr(true)));
+          switch (subOp) {
+            case operation.all:
+              return accum.and(r.expr(cur).reduce(function (left, right) {
+                return left.and(subRecord.contains(right));
+              }, r.expr(true)));
 
-                case operation.eq:
-                  return accum.and(subRecord.eq(cur));
+            case operation.eq:
+              return accum.and(subRecord.eq(cur));
 
-                case operation.exists:
-                  if (!_.isBoolean(cur)) return r.error('exists not boolean');
-                  return accum.and(cur ? record.default({}).hasFields(prop) : record.default({}).hasFields(prop).not());
+            case operation.exists:
+              if (!_.isBoolean(cur)) return r.error('exists not boolean');
+              return accum.and(cur ? record.default({}).hasFields(prop) : record.default({}).hasFields(prop).not());
 
-                case operation.gt:
-                  return accum.and(subRecord.gt(cur));
+            case operation.gt:
+              return accum.and(subRecord.gt(cur));
 
-                case operation.gte:
-                  return accum.and(subRecord.ge(cur));
+            case operation.gte:
+              return accum.and(subRecord.ge(cur));
 
-                case operation.in:
-                  return accum.and(r.expr(cur).contains(subRecord));
+            case operation.in:
+              return accum.and(r.expr(cur).contains(subRecord));
 
-                case operation.lt:
-                  return accum.and(subRecord.lt(cur));
+            case operation.lt:
+              return accum.and(subRecord.lt(cur));
 
-                case operation.lte:
-                  return accum.and(subRecord.le(cur));
+            case operation.lte:
+              return accum.and(subRecord.le(cur));
 
-                case operation.mod:
-                  var _cur = slicedToArray(cur, 2),
-                      divisor = _cur[0],
-                      remainder = _cur[1];
+            case operation.mod:
+              var _cur = slicedToArray(cur, 2),
+                  divisor = _cur[0],
+                  remainder = _cur[1];
 
-                  remainder = _.isNumber(remainder) ? Math.floor(remainder) : 0;
-                  return _.isNumber(divisor) ? accum.and(record.mod(Math.floor(divisor)).eq(remainder)) : r.error('bad query: BadValue malformed mod, not enough elements');
+              remainder = _.isNumber(remainder) ? Math.floor(remainder) : 0;
+              return _.isNumber(divisor) ? accum.and(record.mod(Math.floor(divisor)).eq(remainder)) : r.error('bad query: BadValue malformed mod, not enough elements');
 
-                case operation.ne:
-                  return accum.and(subRecord.ne(cur));
+            case operation.ne:
+              return accum.and(subRecord.ne(cur));
 
-                case operation.nin:
-                  return accum.and(r.expr(cur).contains(subRecord).not());
+            case operation.nin:
+              return accum.and(r.expr(cur).contains(subRecord).not());
 
-                case operation.not:
-                  return accum.and(_filter(record, op, prop, cur).not());
+            case operation.not:
+              return accum.and(_filter(record, op, prop, cur).not());
 
-                case operation.regex:
-                  return accum.and(subRecord.match(cur));
+            case operation.regex:
+              return accum.and(subRecord.match(cur));
 
-                case operation.size:
-                  return _.isNumber(cur) ? accum.and(subRecord.count().eq(Math.floor(cur))) : r.error('size must be number');
+            case operation.size:
+              return _.isNumber(cur) ? accum.and(subRecord.count().eq(Math.floor(cur))) : r.error('size must be number');
 
-                default:
-                  if (hasOp(cur)) return accum.and(_filter(subRecord, subOp, subProp, cur));
-                  if (subProp) return accum.and(_filter(subRecord(subProp), subOp, subProp, cur));
-                  return subRecord.eq(cur);
-              }
-            }, r.expr(true))
-          };
-      }
-    }();
-
-    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+            default:
+              if (hasOp(cur)) return accum.and(_filter(subRecord, subOp, subProp, cur));
+              if (subProp) return accum.and(_filter(subRecord(subProp), subOp, subProp, cur));
+              return subRecord.eq(cur);
+          }
+        }, r.expr(true));
+    }
   };
 
   return selection.filter(function (record) {

@@ -13,7 +13,7 @@ Creates a rethinkdb filter using MongoDB [query document](https://docs.mongodb.c
 
 ```js
 import rethinkdbdash from 'rethinkdbdash'
-import docFilter from '../src/index'
+import docFilter from 'rethinkdb-doc-filter'
 
 let r = rethinkdbdash()
 let table = r.db('test').table('Animals')
